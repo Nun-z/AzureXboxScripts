@@ -1,0 +1,98 @@
+# Universal Windows Platform
+# Creates a .msix file for installation to an Xbox in dev mode.
+
+trigger: 
+- none
+  
+name: $(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear).0
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- group: uwp-pipeline
+- name: solution
+  value: '**/RetroArch-msvc2017-UWP.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'ReleaseANGLE'
+- name: appxPackageDir
+  value: '$(build.artifactStagingDirectory)\AppxPackages\\'
+- name: pfxpath 
+  value: '$(build.artifactStagingDirectory)\RetroCert.pfx'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '20'
+- name: MinorVersion
+  value: '1'
+- name: 'customBuildNumber'
+  value: '$(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear)$(rev:.r)'
+
+steps:
+
+- checkout: none
+
+- task: DownloadSecureFile@1
+  name: mySecureFile
+  displayName: 'Get the pfx file certificate'
+  inputs:
+    secureFile: RetroCert.pfx
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      Write-Host "Import Certificate" 
+      $pfxpath = '$(mySecureFile.secureFilePath)'
+      $password = 'test'
+      Add-Type -AssemblyName System.Security
+      $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+      $cert.Import($pfxpath, $password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]"PersistKeySet")
+      $store = new-object system.security.cryptography.X509Certificates.X509Store -argumentlist "MY", CurrentUser
+      $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]"ReadWrite")
+      $store.Add($cert)
+      $store.Close()
+
+      #Get RetroArch source code
+      git clone -b master --single-branch https://github.com/Nun-z/RetroArch.git --recursive
+
+      #Add .dll files to build
+      git clone https://github.com/Nun-z/RetroArch-Redist.git
+    
+      #Get .dll files and move them
+      Move-Item -Path ".\RetroArch-Redist\other\*.dll" -Destination .\RetroArch\pkg\msvc-uwp\RetroArch-msvc2017-UWP\cores\x64
+      Move-Item -Path ".\RetroArch-Redist\cores\*.dll" -Destination .\RetroArch\pkg\msvc-uwp\RetroArch-msvc2017-UWP\cores\x64\cores
+      
+#Auto-increment the build number for store submission      
+- task: VersionAPPX@2
+  inputs:
+    Path: '$(Build.SourcesDirectory)'
+    VersionNumber: '$(Build.BuildNumber)'
+    InjectVersion: False
+    VersionRegex: '(0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(\.(0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])){3}'
+    OutputVersion: 'OutputedVersion'
+
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: 'x64'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=SideloadOnly'
+   
+#Copy the package to staging directory
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+  inputs:
+    SourceFolder: '.\RetroArch\pkg\msvc-uwp\x64\ReleaseANGLE'
+    Contents: '**\*.msix'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+#Keep the package instead of deleting it
+- task: PublishBuildArtifacts@1
+  displayName: 'RetroRev store'
+  inputs:
+    PathtoPublish: '$(build.artifactstagingdirectory)'
