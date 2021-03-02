@@ -57,6 +57,7 @@ steps:
       $store.Add($cert)
       $store.Close()
 
+      #Prevent errors associated with multiple conflicting .appxmanifest files
       move .\ppsspp\UWP\PackageGold.appxmanifest .\ppsspp\UWP\Package.appxmanifest
 
 #Auto-increment the build number for store submission      
