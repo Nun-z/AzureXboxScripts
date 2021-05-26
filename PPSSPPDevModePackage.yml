@@ -1,5 +1,7 @@
 # Universal Windows Platform
-# Generates a .appxbundle file that can be installed to an Xbox in dev mode.
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
 
 trigger: 
 - master
@@ -57,8 +59,12 @@ steps:
       $store.Add($cert)
       $store.Close()
 
-      #Prevent errors associated with multiple conflicting .appxmanifest files
+      #Fix build error
       move .\ppsspp\UWP\PackageGold.appxmanifest .\ppsspp\UWP\Package.appxmanifest
+
+      #Get current date
+      $date=$(Get-Date -Format g);
+      Write-Host "##vso[task.setvariable variable=time]$date"
 
 #Auto-increment the build number for store submission      
 - task: VersionAPPX@2
@@ -75,7 +81,7 @@ steps:
     platform: '$(buildPlatform)'
     solution: '$(solution)'
     configuration: '$(buildConfiguration)'
-    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=SideloadOnly'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly'
   
 #Copy the package to staging directory
 - task: CopyFiles@2
@@ -85,8 +91,26 @@ steps:
     Contents: '**\*.appxbundle'
     TargetFolder: '$(build.artifactstagingdirectory)'
 
-#Keep the package instead of deleting it
-- task: PublishBuildArtifacts@1
-  displayName: 'PPSSPP store'
+- task: ArchiveFiles@2
   inputs:
-    PathtoPublish: '$(build.artifactstagingdirectory)'
+    rootFolderOrFile: '$(build.artifactstagingdirectory)'
+    includeRootFolder: true
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/PPSSPP.zip'
+    replaceExistingArchive: true
+    verbose: true
+
+- task: GitHubRelease@1
+  inputs:
+    gitHubConnection: 'github.com_Nun-z'
+    repositoryName: 'Nun-z/PPSSPP'
+    action: 'edit'
+    target: 'master'
+    tagSource: userSpecifiedTag
+    tag: 'AutomatedRelease'
+    tagPattern: 'AutomatedRelease'
+    releaseNotesSource: 'inline'
+    releaseNotesInline: 'This is a PPSSPP UWP package intended for Xbox based on the latest code.  Last updated on: $(time).'
+    changeLogCompareToRelease: 'lastFullRelease'
+    changeLogType: 'commitBased'
+    assets: '$(Build.ArtifactStagingDirectory)/PPSSPP.zip'
