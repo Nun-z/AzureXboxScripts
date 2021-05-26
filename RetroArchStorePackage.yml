@@ -1,6 +1,7 @@
 # Universal Windows Platform
-# Generates a .msixupload file for submission to the Microsoft Store.
-# In order for this to work, you will need to use a RetroArch repository that already has your store association added to it (through Visual Studio).
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
 
 trigger:
 - none
@@ -27,9 +28,9 @@ variables:
 - name: build  
   value: '$(Build.BuildId)'
 - name: MajorVersion
-  value: '20'
+  value: '24'
 - name: MinorVersion
-  value: '3'
+  value: '1'
 - name: 'customBuildNumber'
   value: '$(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear)$(rev:.r)'
 
@@ -58,7 +59,7 @@ steps:
       $store.Close()
 
       #Get RetroArch source code
-      git clone -b master --single-branch https://github.com/Nun-z/RetroArch.git --recursive
+      git clone -b master https://github.com/Nun-z/RetroArch.git --recursive
 
       #Add .dll files to build
       git clone https://github.com/Nun-z/RetroArch-Redist.git
@@ -97,3 +98,14 @@ steps:
   displayName: 'RetroRev store'
   inputs:
     PathtoPublish: '$(build.artifactstagingdirectory)'
+
+#Send to MS Store
+- task: store-publish@0
+  inputs:
+    serviceEndpoint: 'MS Store Connection'
+    appId: '<insert here>'
+    packagePath: '$(build.artifactstagingdirectory)\**.msixupload'
+    force: true
+    skipPolling: false
+    deletePackages: true
+    numberOfPackagesToKeep: '2'
