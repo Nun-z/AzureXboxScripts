@@ -1,5 +1,7 @@
 # Starter pipeline
-# Gets the newest .dll update files and .dll core files from the Libretro buildbot and adds them to a repo.
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
 
 trigger:
 - none
@@ -17,10 +19,10 @@ steps:
 - task: InstallSSHKey@0
   displayName: 'Install an SSH key'
   inputs:
-    knownHostsEntry: <>
-    sshPassphrase: <>
-    sshPublicKey: <>
-    sshKeySecureFile: <>
+    knownHostsEntry: '<insert here>'
+    sshPassphrase: '<insert here>'
+    sshPublicKey: '<insert here>'
+    sshKeySecureFile: '<insert here>'
 
 - task: PowerShell@2
   inputs:
@@ -28,6 +30,9 @@ steps:
     script: |
     
       $VerbosePreference = "continue"
+
+      git config --global user.email "<insert here>"
+      git config --global user.name "<insert here>"
 
       #Get current dll files
       git clone https://github.com/Nun-z/RetroArch-Redist.git
@@ -43,9 +48,9 @@ steps:
       Invoke-WebRequest -Uri $url -OutFile $output
       
       #Get fresh non-core dll files from buildbot
-      $url = "http://buildbot.libretro.com/nightly/windows/x86_64/RetroArch_update.7z"
-      $output = ".\RetroArchOther.7z"
-      Invoke-WebRequest -Uri $url -OutFile $output
+      #$url = "http://buildbot.libretro.com/nightly/windows/x86_64/RetroArch_update.7z"
+      #$output = ".\RetroArchOther.7z"
+      #Invoke-WebRequest -Uri $url -OutFile $output
       
       #Intsall 7zip extractor
       [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -56,22 +61,22 @@ steps:
       #Extract 7z files
       $sourcefile = ".\RetroArchCores.7z"
       Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\tempcores'
-      $sourcefile = ".\RetroArchOther.7z"
-      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\tempother'
+      #$sourcefile = ".\RetroArchOther.7z"
+      #Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\tempother'
 
-      #Remove broken ANGLE cores
+      #Don't replace ANGLE cores with buildbot cores
       Remove-Item '.\tempcores\RetroArch-Win64\cores\flycast_libretro.dll'
       Remove-Item '.\tempcores\RetroArch-Win64\cores\mupen64plus_next_libretro.dll'
-      
+      Remove-Item '.\tempcores\RetroArch-Win64\cores\yabasanshiro_libretro.dll'
+
       #Overwrite existing .dll files with new .dll files
-      Move-Item -Path ".\tempother\RetroArch-Win64\*.dll" -Destination .\RetroArch-Redist\other -force
       Move-Item -Path ".\tempcores\RetroArch-Win64\cores\*.dll" -Destination .\RetroArch-Redist\cores -force
 
       #Clean
       Remove-Item '.\tempcores' -Recurse
-      Remove-Item '.\tempother' -Recurse
+      #Remove-Item '.\tempother' -Recurse
       Remove-Item .\RetroArchCores.7z
-      Remove-Item .\RetroArchOther.7z
+      #Remove-Item .\RetroArchOther.7z
       
       #Send new .dll files to repo
       git config --global --add url."git@github.com:".insteadOf "https://github.com/"
