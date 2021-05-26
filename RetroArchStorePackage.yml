@@ -103,7 +103,7 @@ steps:
 - task: store-publish@0
   inputs:
     serviceEndpoint: 'MS Store Connection'
-    appId: '9NWXWFRL4W11'
+    appId: '<insert here>'
     packagePath: '$(build.artifactstagingdirectory)\AppxPackages\RetroArch*.msixupload'
     force: true
     skipPolling: true
