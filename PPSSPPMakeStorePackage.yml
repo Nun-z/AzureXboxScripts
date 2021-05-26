@@ -97,7 +97,7 @@ steps:
 - task: store-publish@0
   inputs:
     serviceEndpoint: 'MS Store Connection'
-    appId: '9NN4MXPXPTL7'
+    appId: '<insert here>'
     packagePath: '$(build.artifactstagingdirectory)\AppxPackages\PPSSPP*.appxupload'
     force: true
     skipPolling: true
