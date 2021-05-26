@@ -1,9 +1,10 @@
 # Universal Windows Platform
-# Generates a .appxupload file for submission to the Microsoft Store
-# You must have your own repository with PPSSPP source code linked to your MS Store.
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
 
 trigger: 
-- none
+- master
   
 name: $(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear).0
 
@@ -44,7 +45,7 @@ steps:
     script: |
     
       #Get the PPSSPP code
-      git clone -b master --single-branch https://github.com/Nun-z/ppsspp.git --recursive
+      git clone -b master https://github.com/Nun-z/ppsspp.git --recursive
 
       #Import the certificate included in the repo
       Write-Host "Import Certificate" 
@@ -91,3 +92,14 @@ steps:
   displayName: 'PPSSPP store'
   inputs:
     PathtoPublish: '$(build.artifactstagingdirectory)'
+
+#Send to MS Store
+- task: store-publish@0
+  inputs:
+    serviceEndpoint: 'MS Store Connection'
+    appId: '9NN4MXPXPTL7'
+    packagePath: '$(build.artifactstagingdirectory)\AppxPackages\PPSSPP*.appxupload'
+    force: true
+    skipPolling: true
+    deletePackages: true
+    numberOfPackagesToKeep: '1'
