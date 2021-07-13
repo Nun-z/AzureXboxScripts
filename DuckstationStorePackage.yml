@@ -1,0 +1,102 @@
+# Universal Windows Platform
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
+
+trigger:
+- none
+
+pr: none
+  
+name: $(MajorVersion).$(MinorVersion).$(Rev:r).0
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- name: solution
+  value: '**/duckstation-uwp.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'ReleaseUWP'
+- name: appxPackageDir
+  value: '$(build.SourcesDirectory)\duckstation\build\ReleaseUWP-x64\duckstation-uwp\AppPackages'
+- name: pfxpath 
+  value: '$(build.SourcesDirectory)\duckstation\RetroCert.pfx'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '2'
+- name: MinorVersion
+  value: '0'
+
+steps:
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Get source code
+      git clone -b master https://github.com/Nun-z/duckstation.git --recursive
+    
+      #Import the certificate included in the repo
+      Write-Host "Import Certificate" 
+      $pfxpath = '$(build.SourcesDirectory)\duckstation\RetroCert.pfx'
+      $password = 'test'
+      Add-Type -AssemblyName System.Security
+      $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+      $cert.Import($pfxpath, $password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]"PersistKeySet")
+      $store = new-object system.security.cryptography.X509Certificates.X509Store -argumentlist "MY", CurrentUser
+      $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]"ReadWrite")
+      $store.Add($cert)
+      $store.Close()
+
+- task: NuGetToolInstaller@1
+
+- task: NuGetCommand@2
+  inputs:
+    restoreSolution: '$(solution)'
+
+
+#Auto-increment the build number for store submission      
+- task: VersionAPPX@2
+  inputs:
+    Path: '$(Build.SourcesDirectory)\duckstation'
+    VersionNumber: '$(Build.BuildNumber)'
+    InjectVersion: True
+    OutputVersion: 'OutputedVersion'
+
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: '$(buildPlatform)'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=StoreUpload'
+   
+#Copy the package to staging directory
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+  inputs:
+    SourceFolder: '$(appxPackageDir)'
+    Contents: '**\*.appxupload'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+#Keep the package instead of deleting it
+- task: PublishBuildArtifacts@1
+  displayName: 'Duckstation store'
+  inputs:
+    PathtoPublish: '$(build.artifactstagingdirectory)'
+
+#Send to MS Store
+- task: store-publish@0
+  inputs:
+    serviceEndpoint: 'MS Store Connection'
+    appId: '9MT145GVMBDM'
+    packagePath: '$(build.artifactstagingdirectory)\duckstation*.appxupload'
+    force: true
+    skipPolling: true
+    deletePackages: true
+    numberOfPackagesToKeep: '0'
