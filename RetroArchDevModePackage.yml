@@ -1,0 +1,145 @@
+# Universal Windows Platform
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
+
+trigger:
+- none
+
+pr: none
+  
+name: $(MajorVersion).$(MinorVersion).$(Rev:r).0
+
+pool:
+  #vmImage: windows-latest
+  name: Default
+
+variables:
+- group: uwp-pipeline
+- name: solution
+  value: '**/RetroArch-msvc2019-UWP.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'Release'
+- name: appxPackageDir
+  value: '$(build.artifactStagingDirectory)\AppxPackages\\'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '24'
+- name: MinorVersion
+  value: '7'
+
+steps:
+
+- task: AzureKeyVault@2
+  inputs:
+    azureSubscription: 'Key Vault Connection'
+    KeyVaultName: 'NzSecrets'
+    SecretsFilter: 'publisher, publisherDisplayName'
+    RunAsPreJob: true
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Get RetroArch source code
+      git clone -b master --recursive https://github.com/Nun-z/RetroArch.git
+
+      #Create certificate
+      New-SelfSignedCertificate -Type Custom -Subject $(publisher) -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+      $Thumbprint = (Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {$_.Subject -match '$(publisher)'}).Thumbprint | Sort-Object LastWriteTime | select -last 1;
+      (Get-Content -path ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\RetroArch-msvc2019-UWP.vcxproj" -Raw) -replace '97537639885375FFB2540E97CA4C388BED0FA9B7', $Thumbprint | Set-Content -Path ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\RetroArch-msvc2019-UWP.vcxproj"
+
+      get-content -path '.\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\RetroArch-msvc2019-UWP.vcxproj'
+
+      #Add .dll files to build
+      git clone https://github.com/Nun-z/RetroArch-Redist.git -b main
+
+      #Remove unneeded cores
+      Remove-Item '.\RetroArch-Redist\cores\bsnes2014_accuracy_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\bsnes2014_balanced_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\bsnes2014_performance_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\bsnes_cplusplus98_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\citra2018_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\citra_canary_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\citra_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\desmume2015_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\fbalpha2012_cps1_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\fbalpha2012_cps2_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\fbalpha2012_cps3_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\fbalpha2012_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\fbalpha2012_neogeo_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\higan_sfc_balanced_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\higan_sfc_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\imageviewer_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\opera_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\parallel_n64_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\pcsx_rearmed_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\play_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\snes9x2002_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\snes9x2005_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\snes9x2005_plus_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\snes9x2010_libretro.dll'
+      Remove-Item '.\RetroArch-Redist\cores\swanstation_libretro.dll'
+      
+      if ( ${env:STABLE?} -eq "true" ) {
+        Remove-Item '.\RetroArch-Redist\cores\dolphin_libretro.dll'
+        Move-Item -Path ".\RetroArch-Redist\cores\dolphin_libretro_old.dll" -Destination ".\RetroArch-Redist\cores\dolphin_libretro.dll"
+      }
+      else {
+        Remove-Item '.\RetroArch-Redist\cores\dolphin_libretro_old.dll'
+      }
+    
+      #Get .dll files and move them
+      Move-Item -Path ".\RetroArch-Redist\other\*.dll" -Destination ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\cores\x64"
+      Move-Item -Path ".\RetroArch-Redist\cores\*.dll" -Destination ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\cores\x64\cores"
+
+      #Modify store association XML
+      [xml]$storeAssociationDoc = Get-Content -Path ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\Package.StoreAssociation.xml"
+      $storeAssociationDoc.StoreAssociation.Publisher = "$(publisher)"
+      $storeAssociationDoc.StoreAssociation.PublisherDisplayName = "$(publisherDisplayName)"
+      $storeAssociationDoc.StoreAssociation.ProductReservedInfo.MainPackageIdentityName = ${env:IDENTITYNAME}
+      $storeAssociationDoc.StoreAssociation.ProductReservedInfo.ReservedNames.ReservedName = ${env:DISPLAYNAME}
+      $storeAssociationDoc.Save(".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\Package.StoreAssociation.xml")
+
+      #Modify .appxmanifest XML
+      [xml]$manifestDoc = Get-Content -Path ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\Package.appxmanifest"
+      $manifestDoc.Package.Identity.Name = ${env:IDENTITYNAME}
+      $manifestDoc.Package.Identity.Publisher = "$(publisher)"
+      $manifestDoc.Package.Properties.DisplayName = ${env:DISPLAYNAME}
+      $manifestDoc.Package.Properties.PublisherDisplayName = "$(publisherDisplayName)"
+      $manifestDoc.Save(".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\Package.appxmanifest")
+
+#Auto-increment the build number for store submission      
+- task: VersionAPPX@2
+  inputs:
+    Path: '$(Build.SourcesDirectory)'
+    VersionNumber: '$(Build.BuildNumber)'
+    InjectVersion: True
+    OutputVersion: 'OutputedVersion'
+
+#Build the package
+- task: VSBuild@1
+  inputs:
+    vsVersion: '16.0'
+    platform: '$(buildPlatform)'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir=$(appxPackageDir) /p:AppxBundle=Always /p:UapAppxPackageBuildMode=Sideload'
+   
+#Copy the package to staging directory
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+  inputs:
+    SourceFolder: '.\RetroArch\pkg\msvc-uwp\x64\ReleaseANGLE'
+    Contents: '**\*.msixupload'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+#Keep the package instead of deleting it
+- task: PublishBuildArtifacts@1
+  displayName: 'RetroRev store'
+  inputs:
+    PathtoPublish: '$(build.artifactstagingdirectory)'

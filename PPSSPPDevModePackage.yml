@@ -1,0 +1,100 @@
+# Universal Windows Platform
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
+
+trigger: 
+- master
+  
+name: $(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear).0
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- group: uwp-pipeline
+- name: solution
+  value: '**/PPSSPP_UWP.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'UWP Gold'
+- name: appxPackageDir
+  value: '$(build.artifactStagingDirectory)\AppxPackages\\'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '20'
+- name: MinorVersion
+  value: '1'
+- name: 'customBuildNumber'
+  value: '$(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear)$(rev:.r)'
+
+steps:
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Get the PPSSPP code
+      git clone -b master --single-branch https://github.com/Nun-z/ppsspp.git --recursive
+
+      New-SelfSignedCertificate -Type Custom -Subject "CN=DBEECBAB-E09C-4284-B5EA-80CDCB791506" -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+      $Thumbprint = (Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {$_.Subject -match "CN=DBEECBAB-E09C-4284-B5EA-80CDCB791506"}).Thumbprint | Sort-Object LastWriteTime | select -last 1;
+      (Get-Content -path ".\ppsspp\UWP\UWP.vcxproj" -Raw) -replace 'ba64e12ea31f1f143c10e52bcb432354689dcedd', $Thumbprint | Set-Content -Path ".\ppsspp\UWP\UWP.vcxproj"
+
+      move .\ppsspp\UWP\PackageGold.appxmanifest .\ppsspp\UWP\Package.appxmanifest
+
+      #Get current date
+      $date=$(Get-Date -Format g);
+      Write-Host "##vso[task.setvariable variable=time]$date"
+
+#Auto-increment the build number for store submission      
+- task: VersionAPPX@2
+  inputs:
+    Path: '$(Build.SourcesDirectory)\**'
+    VersionNumber: '$(Build.BuildNumber)'
+    InjectVersion: False
+    VersionRegex: '(0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(\.(0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])){3}'
+    OutputVersion: 'OutputedVersion'
+
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: '$(buildPlatform)'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly'
+  
+#Copy the package to staging directory
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+  inputs:
+    SourceFolder: 'D:\a\1\a\AppxPackages'
+    Contents: '**\*.appxbundle'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(build.artifactstagingdirectory)'
+    includeRootFolder: true
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/PPSSPP.zip'
+    replaceExistingArchive: true
+    verbose: true
+
+- task: GitHubRelease@1
+  inputs:
+    gitHubConnection: 'GitHub Service Connection'
+    repositoryName: 'Nun-z/PPSSPP'
+    action: 'edit'
+    target: 'master'
+    tagSource: userSpecifiedTag
+    tag: 'AutomatedRelease'
+    tagPattern: 'AutomatedRelease'
+    releaseNotesSource: 'inline'
+    releaseNotesInline: 'This is a PPSSPP UWP package intended for Xbox based on the latest code.  Last updated on: $(time).'
+    changeLogCompareToRelease: 'lastFullRelease'
+    changeLogType: 'commitBased'
+    assets: '$(Build.ArtifactStagingDirectory)/PPSSPP.zip'

@@ -1,0 +1,66 @@
+# Universal Windows Platform
+# Attempt to compile and generate a package on commit to master.  Might be useful for CI.
+
+trigger: 
+- master
+  
+name: $(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear).0
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- group: uwp-pipeline
+- name: solution
+  value: '**/PPSSPP_UWP.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'UWP Gold'
+- name: appxPackageDir
+  value: '$(build.artifactStagingDirectory)\AppxPackages\\'
+- name: pfxpath 
+  value: '$(build.SourcesDirectory)\PPSSPPCert.pfx'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '20'
+- name: MinorVersion
+  value: '1'
+- name: 'customBuildNumber'
+  value: '$(MajorVersion).$(MinorVersion).$(date:yy)$(DayOfYear)$(rev:.r)'
+
+steps:
+#- task: DownloadSecureFile@1
+  #name: mySecureFile
+  #displayName: 'Get the pfx file certificate'
+  #inputs:
+    #secureFile: 'PPSSPPCert.pfx'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Try getting submodules
+      git submodule update --init --recursive
+      
+      #Import the certificate included in the repo
+      Write-Host "Import Certificate" 
+      $pfxpath = '$(pfxpath)'
+      $password = 'test'
+      Add-Type -AssemblyName System.Security
+      $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+      $cert.Import($pfxpath, $password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]"PersistKeySet")
+      $store = new-object system.security.cryptography.X509Certificates.X509Store -argumentlist "MY", CurrentUser
+      $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]"ReadWrite")
+      $store.Add($cert)
+      $store.Close()
+      
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: '$(buildPlatform)'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=StoreUpload'

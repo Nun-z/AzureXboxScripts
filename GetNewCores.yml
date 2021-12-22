@@ -1,0 +1,96 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- none
+
+pr: none
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- checkout: none
+  lfs: true
+  persistCredentials: true
+  
+- task: InstallSSHKey@0
+  displayName: 'Install an SSH key'
+  inputs:
+    knownHostsEntry: ''
+    sshPassphrase: ''
+    sshPublicKey: ''
+    sshKeySecureFile: ''
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      $VerbosePreference = "continue"
+
+      git config --global user.email ""
+      git config --global user.name ""
+      $ProgressPreference = 'SilentlyContinue'
+
+      #Get current dll files
+      git clone https://github.com/Nun-z/RetroArch-Redist.git
+      
+      #Get fresh cores from buildbot
+      $url = "http://buildbot.libretro.com/nightly/windows/x86_64/RetroArch_cores.7z"
+      $output = ".\RetroArchCores.7z"
+      Invoke-WebRequest -Uri $url -OutFile $output
+      
+      #Get fresh non-core dll files from buildbot
+      $url = "http://buildbot.libretro.com/nightly/windows/x86_64/RetroArch.7z"
+      $output = ".\RetroArchOther.7z"
+      Invoke-WebRequest -Uri $url -OutFile $output
+      
+      #Intsall 7zip extractor
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+      Set-PSRepository -Name 'PSGallery' -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted
+      Install-Module -Name 7Zip4PowerShell -Force
+      
+      #Extract 7z files
+      $sourcefile = ".\RetroArchCores.7z"
+      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\tempcores'
+      $sourcefile = ".\RetroArchOther.7z"
+      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\tempother'
+
+      #Don't replace ANGLE cores
+      Remove-Item '.\tempcores\RetroArch-Win64\cores\flycast_libretro.dll'
+      Remove-Item '.\tempcores\RetroArch-Win64\cores\mupen64plus_next_libretro.dll'
+      Remove-Item '.\tempcores\RetroArch-Win64\cores\yabasanshiro_libretro.dll'
+
+      #Use ANGLE cores from FAQ
+      $url = "http://195.90.212.190/Files/Angle%20Cores/flycast_libretro.dll"
+      $output = ".\tempcores\RetroArch-Win64\cores\flycast_libretro.dll"
+      Invoke-WebRequest -Uri $url -OutFile $output
+      $url = "http://195.90.212.190/Files/Angle%20Cores/mupen64plus_next_libretro.dll"
+      $output = ".\tempcores\RetroArch-Win64\cores\mupen64plus_next_libretro.dll"
+      Invoke-WebRequest -Uri $url -OutFile $output
+      $url = "http://195.90.212.190/Files/Angle%20Cores/yabasanshiro_libretro.dll"
+      $output = ".\tempcores\RetroArch-Win64\cores\yabasanshiro_libretro.dll"
+      Invoke-WebRequest -Uri $url -OutFile $output
+
+      #Overwrite existing .dll files with new .dll files
+      Move-Item -Path ".\tempcores\RetroArch-Win64\cores\*.dll" -Destination .\RetroArch-Redist\cores -force
+      Move-Item -Path ".\tempother\RetroArch-Win64\*.dll" -Destination .\RetroArch-Redist\other -force
+
+      #Clean
+      Remove-Item '.\tempcores' -Recurse
+      Remove-Item '.\tempother' -Recurse
+      Remove-Item .\RetroArchCores.7z
+      Remove-Item .\RetroArchOther.7z
+      
+      #Send new .dll files to repo
+      git config --global --add url."git@github.com:".insteadOf "https://github.com/"
+      cd RetroArch-Redist
+      git add -A
+      git commit -m "Get fresh cores from buildbot"
+      git push
+      Start-Sleep -s 115
+      git push

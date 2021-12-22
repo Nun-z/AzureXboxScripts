@@ -1,0 +1,168 @@
+ # Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+    
+trigger:
+- none
+
+pool: #Self-Hosted
+  vmImage: windows-2022
+
+variables:
+- group: uwp-pipeline
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '20'
+- name: MinorVersion
+  value: '3'
+- name: displayName
+  value: 'Retro$(revName) $(lastName)'
+- name: identityName
+  value: '$(publisherIdentityValue).Retro$(revName)$(lastName)'
+
+steps:
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Install-Module PowerShellGet -Repository PSGallery -Force
+      Install-Module Az.Accounts -Repository PSGallery -AllowClobber -Force
+      Install-Module Az.Storage -Repository PSGallery -AllowClobber -Force
+      
+      $User = "AzureDevOps@#.onmicrosoft.com"
+      $PWord = ConvertTo-SecureString -String "" -AsPlainText -Force
+      $tenant = ""
+      $subscription = ""
+      $Credential = New-Object -TypeName "System.Management.Automation.PSCredential" -ArgumentList $User,$PWord
+      Connect-AzAccount -Credential $Credential -Tenant $tenant -Subscription $subscription
+      
+      $connectionString = ""
+      $containerName = "package-templates"
+      $storageAccount = New-AzStorageContext -ConnectionString $connectionString
+      Get-AzStorageBlobContent -Container $containerName -Blob "$(appxFileName)" -Destination . -Context $storageAccount
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Download 7-zip extractor
+      $VerbosePreference = "continue"
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+      Set-PSRepository -Name 'PSGallery' -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted
+      Install-Module -Name 7Zip4PowerShell -Force
+
+      #Extract package contents
+      $sourcefile = ".\$(appxFileName)"
+      
+      $checkExtension = Select-String "$(appxFileName)" -Pattern "msix"
+      if ($checkExtension -ne $null) {
+          $(appxFileName).replace("msix","appx")
+      }
+
+      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\PackageContents'
+      New-Item -Path '.\NewPackage' -ItemType Directory
+
+      $manifestDoc = [xml](Get-Content -Path ".\PackageContents\AppxManifest.xml")
+      $namespace = "http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+      $rescap = "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+
+      #change identities
+      $manifestDoc.Package.Properties.DisplayName = '$(displayName)'
+      $manifestDoc.Package.Identity.Name = '$(identityName)'
+      $manifestDoc.Package.Identity.Publisher = '$(publisher)'
+      $manifestDoc.Package.Identity.Version = '$(MajorVersion).$(MinorVersion).$(build).0'
+      $manifestDoc.Package.Properties.PublisherDisplayName = '$(publisherDisplayName)'
+
+      $runTrust = Get-Content -Path ".\PackageContents\AppxManifest.xml" | Select-String -Pattern "runFullTrust"
+      $broadFile = Get-Content -Path ".\PackageContents\AppxManifest.xml" | Select-String -Pattern "broadFileSystemAccess"
+      $resHeader = Get-Content -Path ".\PackageContents\AppxManifest.xml" | Select-String -Pattern "xmlns:rescap"
+
+      if ($manifestDoc.Package.Capabilities -eq $null) {
+          $capabilities = $manifestDoc.CreateElement("Capabilities", $namespace)
+          $manifestDoc.Package.AppendChild($capabilities)
+          $sleeper = $manifestDoc.CreateElement("sleeper", $namespace)
+          $capabilities.AppendChild($sleeper)
+
+          $manifestDoc.Save(".\PackageContents\AppxManifest.xml")
+          Get-Content ".\PackageContents\AppxManifest.xml"
+      }
+
+      if ($resHeader -eq $null) {
+              $attr = $manifestDoc.CreateAttribute("xmlns:rescap")
+              $attr.Value = $rescap
+              $manifestDoc.Package.Attributes.Append($attr)
+              $manifestDoc.Package.IgnorableNamespaces = $manifestDoc.Package.IgnorableNamespaces + " rescap" 
+      }
+      if ($runTrust -eq $null) {
+              $trustElement = $manifestDoc.CreateElement('rescap', 'Capability', $rescap)
+              $trustElement.setAttribute("Name", "runFullTrust")
+              $manifestDoc.Package.Capabilities.InsertAfter($trustElement, $manifestDoc.Package.Capabilities.Item(0))
+      }
+      if ($broadFile -eq $null) {
+              $fileElement = $manifestDoc.CreateElement('rescap', 'Capability', $rescap)
+              $fileElement.setAttribute("Name", "broadFileSystemAccess")
+              $manifestDoc.Package.Capabilities.InsertAfter($fileElement, $manifestDoc.Package.Capabilities.Item(0))
+      }
+      
+      $manifestDoc.Save(".\PackageContents\AppxManifest.xml")
+      Get-Content ".\PackageContents\AppxManifest.xml"
+
+      #Create certificate
+      $pw = ConvertTo-SecureString -String "test" -Force -AsPlainText
+
+      New-SelfSignedCertificate -Type Custom -Subject $(publisher) -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -HashAlgorithm SHA256 -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+      $Thumbprint = (Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {$_.Subject -match '$(publisher)'}).Thumbprint | select -last 1
+      Export-PfxCertificate -cert Cert:\CurrentUser\My\$Thumbprint -FilePath ".\newCert.pfx" -Password $pw
+
+- task: ReplaceInFilesTextByText@2
+  inputs:
+    parameterSearchDirectory: '$(Build.SourcesDirectory)\PackageContents'
+    parameterSearchText: '<sleeper />'
+    parameterReplaceText: ''
+    parameterTypeOfSearch: 'filesList'
+    parameterFilesPattern: '*.xml'
+    parameterFilesList: '\AppxManifest.xml'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Get-Content ".\PackageContents\AppxManifest.xml"
+
+# #create and sign package
+- task: CmdLine@2
+  inputs:
+    script: |
+      "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\makeappx.exe" pack /v /d ".\PackageContents" /p ".\NewPackage\$(appxFileName)"
+      "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe" sign /debug /f ".\newCert.pfx" /p test /fd SHA256 /v ".\NewPackage\$(appxFileName)"
+
+- task: PublishPipelineArtifact@1
+  inputs:
+    targetPath: '.\NewPackage\$(appxFileName)'
+    artifact: 'New Package'
+    publishLocation: 'pipeline'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Install-Module PowerShellGet -Repository PSGallery -Force
+      Install-Module Az.Accounts -Repository PSGallery -AllowClobber -Force
+      Install-Module Az.Storage -Repository PSGallery -AllowClobber -Force
+      
+      $User = "AzureDevOps@#.onmicrosoft.com"
+      $PWord = ConvertTo-SecureString -String "" -AsPlainText -Force
+      $tenant = ""
+      $subscription = ""
+      $Credential = New-Object -TypeName "System.Management.Automation.PSCredential" -ArgumentList $User,$PWord
+      Connect-AzAccount -Credential $Credential -Tenant $tenant -Subscription $subscription
+      
+      $connectionString = ""
+      $containerName = "generated-packages"
+      $storageAccount = New-AzStorageContext -ConnectionString $connectionString
+      Set-AzStorageBlobContent -Container $containerName -File ".\NewPackage\$(appxFileName)" -Context $storageAccount -Force

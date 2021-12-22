@@ -1,0 +1,55 @@
+# Universal Windows Platform
+# This script will run each time a commit is made to the master branch.  It attempts to compile RA and generate a package.  This could be useful for CI.
+# Note: the certificate must be included in the root of the repository.  You can also uncomment the DownloadSecureFile@1 task below instead for better security.
+
+trigger: 
+- master
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- group: uwp-pipeline
+- name: solution
+  value: '**/RetroArch-msvc2017-UWP.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'ReleaseANGLE'
+- name: appxPackageDir
+  value: '$(build.artifactStagingDirectory)\AppxPackages\\'
+- name: pfxpath 
+  value: '$(build.SourcesDirectory)\RetroCert.pfx'
+
+
+steps:
+#- task: DownloadSecureFile@1
+  #name: mySecureFile
+  #displayName: 'Get the pfx file certificate'
+  #inputs:
+    #secureFile: 'RetroCert.pfx'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Import the certificate included in the repo
+      Write-Host "Import Certificate" 
+      $pfxpath = '$(pfxpath)'
+      $password = 'test'
+      Add-Type -AssemblyName System.Security
+      $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+      $cert.Import($pfxpath, $password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]"PersistKeySet")
+      $store = new-object system.security.cryptography.X509Certificates.X509Store -argumentlist "MY", CurrentUser
+      $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]"ReadWrite")
+      $store.Add($cert)
+      $store.Close()
+      
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: 'x64'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=StoreUpload'

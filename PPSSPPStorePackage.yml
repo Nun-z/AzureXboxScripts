@@ -1,0 +1,100 @@
+# Universal Windows Platform
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
+
+trigger: 
+- master
+  
+name: $(MajorVersion).$(MinorVersion).$(Rev:r).0
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- group: uwp-pipeline
+- name: solution
+  value: '**/PPSSPP_UWP.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'Release'
+- name: appxPackageDir
+  value: '$(build.artifactStagingDirectory)\AppxPackages\\'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '20'
+- name: MinorVersion
+  value: '2'
+- group: uwp-pipeline
+- name: displayName
+  value: 'Retro$(revName) PSP'
+- name: identityName
+  value: '$(publisherIdentityValue).Retro$(revName)PSP'
+
+steps:
+
+- checkout: none
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Get the PPSSPP code
+      git clone -b master https://github.com/Nun-z/ppsspp.git --recursive
+      
+      # Prevent errors associated with multiple conflicting appxmanifest files
+      move ".\ppsspp\UWP\PackageNormal.appxmanifest" ".\ppsspp\UWP\Package.appxmanifest"
+
+      #Create certificate
+      New-SelfSignedCertificate -Type Custom -Subject $(publisher) -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+      $Thumbprint = (Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {$_.Subject -match '$(publisher)'}).Thumbprint;
+      (Get-Content -path ".\ppsspp\UWP\UWP.vcxproj" -Raw) -replace 'ba64e12ea31f1f143c10e52bcb432354689dcedd', $Thumbprint | Set-Content -Path ".\ppsspp\UWP\UWP.vcxproj"
+
+      # Modify store association XML
+      [xml]$storeAssociationDoc = Get-Content -Path ".\ppsspp\UWP\Package.StoreAssociation.xml"
+      $storeAssociationDoc.StoreAssociation.Publisher = "$(publisher)"
+      $storeAssociationDoc.StoreAssociation.PublisherDisplayName = "$(publisherDisplayName)"
+      $storeAssociationDoc.StoreAssociation.ProductReservedInfo.MainPackageIdentityName = "$(identityName)"
+      $storeAssociationDoc.StoreAssociation.ProductReservedInfo.ReservedNames.ReservedName = "$(displayName)"
+      $storeAssociationDoc.Save(".\ppsspp\UWP\Package.StoreAssociation.xml")
+
+      # Modify .appxmanifest XML
+      [xml]$manifestDoc = Get-Content -Path ".\ppsspp\UWP\Package.appxmanifest"
+      $manifestDoc.Package.Identity.Name = "$(identityName)"
+      $manifestDoc.Package.Identity.Publisher = "$(publisher)"
+      $manifestDoc.Package.Properties.DisplayName = "$(displayName)"
+      $manifestDoc.Package.Properties.PublisherDisplayName = "$(publisherDisplayName)"
+      $manifestDoc.Save(".\ppsspp\UWP\Package.appxmanifest")
+
+#Auto-increment the build number for store submission      
+- task: VersionAPPX@2
+  inputs:
+    Path: '$(Build.SourcesDirectory)\**'
+    VersionNumber: '$(Build.BuildNumber)'
+    InjectVersion: True
+    OutputVersion: 'OutputedVersion'
+
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: '$(buildPlatform)'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=CI'
+  
+#Copy the package to staging directory
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+  inputs:
+    SourceFolder: 'D:\a\1\a\AppxPackages'
+    Contents: '**\*.appxupload'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+#Keep the package instead of deleting it
+- task: PublishBuildArtifacts@1
+  displayName: 'PPSSPP store'
+  inputs:
+    PathtoPublish: '$(build.artifactstagingdirectory)'

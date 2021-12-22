@@ -1,0 +1,104 @@
+# Universal Windows Platform
+# Build a Universal Windows Platform project using Visual Studio.
+# Add steps that test and distribute an app, save build artifacts, and more:
+# https://aka.ms/yaml
+
+trigger:
+- none
+
+pr: none
+  
+name: $(MajorVersion).$(MinorVersion).$(Rev:r).0
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+- name: solution
+  value: '**/duckstation-uwp.sln'
+- name: buildPlatform
+  value: 'x64'
+- name: buildConfiguration
+  value: 'ReleaseUWP'
+- name: appxPackageDir
+  value: '$(build.SourcesDirectory)\duckstation\build\ReleaseUWP-x64\duckstation-uwp\AppPackages'
+- name: build  
+  value: '$(Build.BuildId)'
+- name: MajorVersion
+  value: '3'
+- name: MinorVersion
+  value: '0'
+- group: uwp-pipeline
+- name: displayName
+  value: 'Retro$(revName) PSX'
+- name: identityName
+  value: '$(publisherIdentityValue).Retro$(revName)PSX'
+
+steps:
+
+- checkout: none
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+    
+      #Get source code
+      git clone -b master https://github.com/Nun-z/duckstation.git --recursive
+
+      #Create certificate
+      New-SelfSignedCertificate -Type Custom -Subject $(publisher) -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+      $Thumbprint = (Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {$_.Subject -match '$(publisher)'}).Thumbprint;
+      (Get-Content -path ".\duckstation\src\duckstation-uwp\duckstation-uwp.vcxproj" -Raw) -replace '0bbfdbd9c447c9d649842b156ab88bb1c883023d', $Thumbprint | Set-Content -Path ".\duckstation\src\duckstation-uwp\duckstation-uwp.vcxproj" 
+
+      # Modify store association XML
+      [xml]$storeAssociationDoc = Get-Content -Path ".\duckstation\src\duckstation-uwp\Package.StoreAssociation.xml"
+      $storeAssociationDoc.StoreAssociation.Publisher = "$(publisher)"
+      $storeAssociationDoc.StoreAssociation.PublisherDisplayName = "$(publisherDisplayName)"
+      $storeAssociationDoc.StoreAssociation.ProductReservedInfo.MainPackageIdentityName = "$(identityName)"
+      $storeAssociationDoc.StoreAssociation.ProductReservedInfo.ReservedNames.ReservedName = "$(displayName)"
+      $storeAssociationDoc.Save(".\duckstation\src\duckstation-uwp\Package.StoreAssociation.xml")
+
+      # Modify .appxmanifest XML
+      [xml]$manifestDoc = Get-Content -Path ".\duckstation\src\duckstation-uwp\Package.appxmanifest"
+      $manifestDoc.Package.Identity.Name = "$(identityName)"
+      $manifestDoc.Package.Identity.Publisher = "$(publisher)"
+      $manifestDoc.Package.Properties.DisplayName = "$(displayName)"
+      $manifestDoc.Package.Properties.PublisherDisplayName = "$(publisherDisplayName)"
+      $manifestDoc.Save(".\duckstation\src\duckstation-uwp\Package.appxmanifest")
+
+- task: NuGetToolInstaller@1
+
+- task: NuGetCommand@2
+  inputs:
+    restoreSolution: '$(solution)'
+
+#Auto-increment the build number for store submission      
+- task: VersionAPPX@2
+  inputs:
+    Path: '$(Build.SourcesDirectory)\duckstation'
+    VersionNumber: '$(Build.BuildNumber)'
+    InjectVersion: True
+    OutputVersion: 'OutputedVersion'
+
+#Build the package
+- task: VSBuild@1
+  inputs:
+    platform: '$(buildPlatform)'
+    solution: '$(solution)'
+    configuration: '$(buildConfiguration)'
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxBundle=Always /p:UapAppxPackageBuildMode=StoreUpload'
+   
+#Copy the package to staging directory
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+  inputs:
+    SourceFolder: '$(appxPackageDir)'
+    Contents: '**\*.appxupload'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+#Keep the package instead of deleting it
+- task: PublishBuildArtifacts@1
+  displayName: 'Duckstation store'
+  inputs:
+    PathtoPublish: '$(build.artifactstagingdirectory)'
