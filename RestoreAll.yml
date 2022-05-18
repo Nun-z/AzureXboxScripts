@@ -1,0 +1,86 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- none
+
+pool:
+  vmImage: windows-latest
+
+steps:
+
+#Duckstation
+- task: RunPipelines@2
+  inputs:
+    serviceConnection: 'PipelineService'
+    buildParameters: '[{"SYSTEM.DEBUG":"FALSE"}]'
+    project: 'Generate Packages'
+    folderPath: '.'
+    buildDefinition: 'Duckstation Store Package'
+    targetType: 'inline'
+    waitForQueuedBuildsToFinish: false
+    storeInOutputVariable: false
+    customPrefix: '12'
+    setBranch: true
+    Branch: 'main'
+
+#PPSSPP
+- task: RunPipelines@2
+  inputs:
+    serviceConnection: 'PipelineService'
+    project: 'Generate Packages'
+    folderPath: '.'
+    buildDefinition: 'PPSSPP Store Package'
+    targetType: 'inline'
+    buildParameters: '[{"SYSTEM.DEBUG":"FALSE"}]'
+    waitForQueuedBuildsToFinish: false
+    storeInOutputVariable: false
+    customPrefix: '12'
+    setBranch: true
+    Branch: 'main'
+
+#FTP
+- task: RunPipelines@2
+  inputs:
+    serviceConnection: 'PipelineService'
+    project: 'Generate Packages'
+    folderPath: '.'
+    buildDefinition: 'FTP Store Package'
+    targetType: 'inline'
+    buildParameters: '[{"SYSTEM.DEBUG":"FALSE"}]'
+    waitForQueuedBuildsToFinish: false
+    storeInOutputVariable: false
+    customPrefix: '12'
+    setBranch: true
+    Branch: 'main'
+
+#RA Stable and RA Unstable
+- task: RunPipelines@2
+  inputs:
+    serviceConnection: 'PipelineService'
+    project: 'Generate Packages'
+    folderPath: '.'
+    buildDefinition: 'RA Store Package Stable'
+    targetType: 'inline'
+    buildParameters: '[{"SYSTEM.DEBUG":"FALSE"}]'
+    waitForQueuedBuildsToFinish: false
+    storeInOutputVariable: false
+    customPrefix: '12'
+    setBranch: true
+    Branch: 'main'
+
+- task: RunPipelines@2
+  inputs:
+    serviceConnection: 'PipelineService'
+    project: 'Generate Packages'
+    folderPath: '.'
+    buildDefinition: 'Generic Package'
+    targetType: 'inline'
+    buildParameters: '[{"appxFileName":"SonicCD.appx","lastName":"SonicCD"},{"appxFileName":"OpenLara.appx","lastName":"OpenLara"},{"appxFileName":"Flycast.appx", "lastName":"Dreamcast"}, {"appxFileName":"Devilution.appx", "lastName":"DevilutionX"}]'
+    waitForQueuedBuildsToFinish: false
+    storeInOutputVariable: false
+    customPrefix: "12"
+    setBranch: true
+    Branch: 'main'
