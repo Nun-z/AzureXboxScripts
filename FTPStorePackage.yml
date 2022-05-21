@@ -1,7 +1,7 @@
 # Universal Windows Platform
 # Build a Universal Windows Platform project using Visual Studio.
 # Add steps that test and distribute an app, save build artifacts, and more:
-# https://aka.ms/yaml
+# https://aka.ms/yamlsmtp.gmail.com
 
 trigger:
 - none
@@ -11,7 +11,7 @@ pr: none
 name: $(MajorVersion).$(MinorVersion).$(Rev:r).0
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: 'windows-2019'
 
 variables:
 - name: solution
@@ -25,9 +25,10 @@ variables:
 - name: build  
   value: '$(Build.BuildId)'
 - name: MajorVersion
-  value: '3'
+  value: '4'
 - name: MinorVersion
   value: '0'
+- group: azure-login
 - group: uwp-pipeline
 - name: displayName
   value: 'Retro$(revName) FTP'
@@ -36,13 +37,21 @@ variables:
 
 steps:
 
-- checkout: none
-
 - task: PowerShell@2
   inputs:
     targetType: 'inline'
     script: |
-    
+      #Download 7-zip extractor
+      $VerbosePreference = "continue"
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+      Set-PSRepository -Name 'PSGallery' -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted
+      Install-Module -Name 7Zip4PowerShell -Force
+
+      #Extract sideloader
+      $sourcefile = "Sideloader.rar"
+      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\Sideloader'
+
       #Get source code
       git clone -b main https://github.com/Nun-z/DURANGO-FTP.git --recursive
 
@@ -102,3 +111,27 @@ steps:
   displayName: 'FTP store'
   inputs:
     PathtoPublish: '$(build.artifactstagingdirectory)'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Install-Module PowerShellGet -Repository PSGallery -Force
+      Install-Module Az.Accounts -Repository PSGallery -AllowClobber -Force
+      Install-Module Az.Storage -Repository PSGallery -AllowClobber -Force
+      
+      $PWord = ConvertTo-SecureString -String ${env:PASSWORD} -AsPlainText -Force
+      $Credential = New-Object -TypeName "System.Management.Automation.PSCredential" -ArgumentList ${env:USER},$PWord
+      Connect-AzAccount -Credential $Credential -Tenant ${env:TENANT} -Subscription ${env:SUBSCRIPTION}
+      
+      $containerName = "generated-packages"
+      $storageAccount = New-AzStorageContext -ConnectionString ${env:CONNECTIONSTRING}
+      cd "$(build.artifactstagingdirectory)"
+      Get-ChildItem -File -Recurse | Set-AzStorageBlobContent -Container "compiled-packages" -Context $storageAccount
+      
+#Sideloader usage
+- task: CmdLine@2
+  inputs:
+    script: |
+      cd Sideloader
+      Scarlett-Sideloader.exe $(sideloaderCookie) -n "$(displayName)" -o -d "This is an FTP server for UWP." -e test@null.com -s "Images\FTP Screenshot.png" "fakefile.appx"
