@@ -14,8 +14,7 @@ workspace:
 name: $(MajorVersion).$(MinorVersion).$(Rev:r).0
 
 pool:
-  #vmImage: windows-latest
-  name: 'Paperspace VM'
+  vmImage: windows-latest
 
 variables:
 - group: uwp-pipeline
@@ -32,8 +31,8 @@ variables:
 - name: MajorVersion
   value: '25'
 - name: MinorVersion
-  value: '1'
-- group: uwp-pipeline
+  value: '3'
+- group: azure-login
 - name: displayName
   value: 'Retro$(revName)'
 - name: identityName
@@ -45,19 +44,29 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-    
       #Get RetroArch source code
       git clone -b master --recursive https://github.com/Nun-z/RetroArch.git
 
-      # #Create certificate
+      #Download 7-zip extractor
+      $VerbosePreference = "continue"
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+      Set-PSRepository -Name 'PSGallery' -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted
+      Install-Module -Name 7Zip4PowerShell -Force
+
+      #Extract sideloader
+      $sourcefile = "Sideloader.rar"
+      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\Sideloader'
+
+      #Create certificate
       New-SelfSignedCertificate -Type Custom -Subject $(publisher) -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
       $Thumbprint = (Get-ChildItem -Path Cert:\CurrentUser\My | Where-Object {$_.Subject -match '$(publisher)'}).Thumbprint | Sort-Object LastWriteTime | select -last 1;
       (Get-Content -path ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\RetroArch-msvc2019-UWP.vcxproj" -Raw) -replace '97537639885375FFB2540E97CA4C388BED0FA9B7', $Thumbprint | Set-Content -Path ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\RetroArch-msvc2019-UWP.vcxproj"
 
-      #Add .dll files to build
+      # Add .dll files to build
       git clone https://github.com/Nun-z/RetroArch-Redist.git -b main
 
-      #Remove unneeded cores
+      # Remove unneeded cores
       Remove-Item '.\RetroArch-Redist\cores\bsnes2014_accuracy_libretro.dll'
       Remove-Item '.\RetroArch-Redist\cores\bsnes2014_balanced_libretro.dll'
       Remove-Item '.\RetroArch-Redist\cores\bsnes2014_performance_libretro.dll'
@@ -84,17 +93,17 @@ steps:
       Remove-Item '.\RetroArch-Redist\cores\snes9x2010_libretro.dll'
       Remove-Item '.\RetroArch-Redist\cores\swanstation_libretro.dll'
       
-      if ( ${env:STABLE?} -eq "true" ) {
-        $identityName2 = '$(identityName)'
-        $displayName2 = '$(displayName)'
-        Remove-Item '.\RetroArch-Redist\cores\dolphin_libretro.dll'
-        Move-Item -Path ".\RetroArch-Redist\cores\dolphin_libretro_old.dll" -Destination ".\RetroArch-Redist\cores\dolphin_libretro.dll"
-      }
-      else {
+      # if ( ${env:STABLE?} -eq "true" ) {
+      #   $identityName2 = '$(identityName)'
+      #   $displayName2 = '$(displayName)'
+      #   Remove-Item '.\RetroArch-Redist\cores\dolphin_libretro.dll'
+      #   Move-Item -Path ".\RetroArch-Redist\cores\dolphin_libretro_old.dll" -Destination ".\RetroArch-Redist\cores\dolphin_libretro.dll"
+      # }
+      # else {
         Remove-Item '.\RetroArch-Redist\cores\dolphin_libretro_old.dll'
-        $identityName2 = '$(publisherIdentityValue).Retro$(revName)-Auto-update'
-        $displayName2 = 'Retro$(revName) - Auto-update' 
-      }
+        $identityName2 = '$(identityName)'
+        $displayName2 = '$(displayName)' 
+      # }
     
       #Get .dll files and move them
       Move-Item -Path ".\RetroArch-Redist\other\*.dll" -Destination ".\RetroArch\pkg\msvc-uwp\RetroArch-msvc2019-UWP\cores\x64"
@@ -131,8 +140,9 @@ steps:
     platform: '$(buildPlatform)'
     solution: '$(solution)'
     configuration: '$(buildConfiguration)'
-    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir=$(appxPackageDir) /p:AppxBundle=Always /p:UapAppxPackageBuildMode=Sideload'
-   
+    msbuildArgs: '/p:AppxBundlePlatforms="$(buildPlatform)" /p:AppxPackageDir=$(appxPackageDir) /p:AppxBundle=Always /p:UapAppxPackageBuildMode=StoreUpload'
+  #continueOnError: true  
+
 #Copy the package to staging directory
 - task: CopyFiles@2
   displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
@@ -146,3 +156,28 @@ steps:
   displayName: 'RetroRev store'
   inputs:
     PathtoPublish: '$(build.artifactstagingdirectory)'
+  continueOnError: true
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Install-Module PowerShellGet -Repository PSGallery -Force
+      Install-Module Az.Accounts -Repository PSGallery -AllowClobber -Force
+      Install-Module Az.Storage -Repository PSGallery -AllowClobber -Force
+
+      $PWord = ConvertTo-SecureString -String ${env:PASSWORD} -AsPlainText -Force
+      $Credential = New-Object -TypeName "System.Management.Automation.PSCredential" -ArgumentList ${env:USER},$PWord
+      Connect-AzAccount -Credential $Credential -Tenant ${env:TENANT} -Subscription ${env:SUBSCRIPTION}
+      
+      $containerName = "generated-packages"
+      $storageAccount = New-AzStorageContext -ConnectionString ${env:CONNECTIONSTRING}
+      cd "$(build.artifactstagingdirectory)"
+      Get-ChildItem -File -Recurse | Set-AzStorageBlobContent -Container "compiled-packages" -Context $storageAccount
+      
+#Sideloader usage
+- task: CmdLine@2
+  inputs:
+    script: |
+      cd Sideloader
+      Scarlett-Sideloader.exe $(sideloaderCookie) -n "$(displayName)" -o -d "This is the latest version of RetroArch" -e test@null.com -s "Images\RetroArch Screenshot.png" "fakefile.appx"
