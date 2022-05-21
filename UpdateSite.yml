@@ -1,0 +1,255 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+- group: uwp-pipeline
+
+steps:
+
+- task: InstallSSHKey@0
+  displayName: 'Install an SSH key'
+  inputs:
+    knownHostsEntry: ''
+    sshPassphrase: ''
+    sshPublicKey: ''
+    sshKeySecureFile: ''
+
+- script: |
+      git config --global user.email ""
+      git config --global user.name ""
+      $ProgressPreference = 'SilentlyContinue'
+
+      git clone https://github.com/Nun-z/Nun-z.github.io.git
+
+#First app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--first --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(RA Stable Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#First app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--first-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(RA Stable Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#Second app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--second --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(Devilution Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#Second app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--second-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(Devilution Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#Third app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--third --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(PSP Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html 
+
+#Third app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--third-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(PSP Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html 
+
+#Fourth app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--fourth --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(FTP Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#Fourth app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--fourth-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(FTP Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#Fifth app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--fifth --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(PSX Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html
+
+#Fifth app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--fifth-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(PSX Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html    
+
+#Sixth app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--sixth --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(Flycast Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html    
+
+#Sixth app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--sixth-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(Flycast Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html    
+
+#Seventh app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--seventh --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(SonicCD Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html    
+
+#Seventh app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--seventh-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(Sonic CD)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html    
+
+#Eighth app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--eighth --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(OpenLara Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html 
+
+#Eighth app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--eighth-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(OpenLara Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html 
+
+#Ninth app slot
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--ninth --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'ms-windows-store://pdp/?productid=$(RetroPass Link)'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html 
+#Ninth app slot mobile
+- task: ReplaceInFilesBetweenText@2
+  inputs:
+        parameterSearchDirectory: '$(Build.SourcesDirectory)\Nun-z.github.io\\'
+        parameterSearchStart: '<!--ninth-mobile --><a href="'
+        parameterSearchEnd: '" c'
+        parameterReplaceText: 'https://www.xbox.com/en-us/games/store/retrorev8/$(RetroPass Link)?rtc=1'
+        parameterTypeOfSearch: 'filesList' 
+        parameterFilesList: |
+          index.html
+          Games-and-Apps.html 
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+        cd Nun-z.github.io
+        git config --global --add url."git@github.com:".insteadOf "https://github.com/"
+        git add .
+        git commit -m "update links auto"
+        git push
