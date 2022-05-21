@@ -28,6 +28,7 @@ variables:
   value: '3'
 - name: MinorVersion
   value: '0'
+- group: azure-login
 - group: uwp-pipeline
 - name: displayName
   value: 'Retro$(revName) PSX'
@@ -36,15 +37,30 @@ variables:
 
 steps:
 
-- checkout: none
+#Get rclone config file
+- task: DownloadSecureFile@1
+  name: rcloneConfiguration
+  inputs:
+    secureFile: 'rclone.conf'
 
 - task: PowerShell@2
   inputs:
     targetType: 'inline'
     script: |
-    
+
       #Get source code
       git clone -b master https://github.com/Nun-z/duckstation.git --recursive
+
+      #Download 7-zip extractor
+      $VerbosePreference = "continue"
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+      Set-PSRepository -Name 'PSGallery' -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted
+      Install-Module -Name 7Zip4PowerShell -Force
+
+      #Extract sideloader
+      $sourcefile = "Sideloader.rar"
+      Expand-7Zip -ArchiveFileName $sourcefile -TargetPath '.\Sideloader'
 
       #Create certificate
       New-SelfSignedCertificate -Type Custom -Subject $(publisher) -KeyUsage DigitalSignature -FriendlyName "GeneratedCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
@@ -102,3 +118,27 @@ steps:
   displayName: 'Duckstation store'
   inputs:
     PathtoPublish: '$(build.artifactstagingdirectory)'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Install-Module PowerShellGet -Repository PSGallery -Force
+      Install-Module Az.Accounts -Repository PSGallery -AllowClobber -Force
+      Install-Module Az.Storage -Repository PSGallery -AllowClobber -Force
+      
+      $PWord = ConvertTo-SecureString -String ${env:PASSWORD} -AsPlainText -Force
+      $Credential = New-Object -TypeName "System.Management.Automation.PSCredential" -ArgumentList ${env:USER},$PWord
+      Connect-AzAccount -Credential $Credential -Tenant ${env:TENANT} -Subscription ${env:SUBSCRIPTION}
+      
+      $containerName = "generated-packages"
+      $storageAccount = New-AzStorageContext -ConnectionString ${env:CONNECTIONSTRING}
+      cd "$(build.artifactstagingdirectory)"
+      Get-ChildItem -File -Recurse | Set-AzStorageBlobContent -Container "compiled-packages" -Context $storageAccount
+
+#Sideloader usage
+- task: CmdLine@2
+  inputs:
+    script: |
+      cd Sideloader
+      Scarlett-Sideloader.exe $(sideloaderCookie) -n "$(displayName)" -o -d "This app emulates the PS1." -e test@null.com -s "Images\Duckstation Screenshot.png" "fakefile.appx"
