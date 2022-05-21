@@ -1,7 +1,7 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# # Starter pipeline
+# # Start with a minimal pipeline that you can customize to build and deploy your code.
+# # Add steps that build, run tests, deploy, and more:
+# # https://aka.ms/yaml
 
 trigger:
 - none
@@ -71,6 +71,20 @@ steps:
     setBranch: true
     Branch: 'main'
 
+#RetroPass
+- task: RunPipelines@2
+  inputs:
+    serviceConnection: 'PipelineService'
+    project: 'Generate Packages'
+    folderPath: '.'
+    buildDefinition: 'RetroPass Package'
+    targetType: 'inline'
+    buildParameters: '[{"SYSTEM.DEBUG":"FALSE"}]'
+    waitForQueuedBuildsToFinish: false
+    storeInOutputVariable: false
+    customPrefix: '12'
+    setBranch: true
+    Branch: 'main'
 - task: RunPipelines@2
   inputs:
     serviceConnection: 'PipelineService'
@@ -78,7 +92,8 @@ steps:
     folderPath: '.'
     buildDefinition: 'Generic Package'
     targetType: 'inline'
-    buildParameters: '[{"appxFileName":"SonicCD.appx","lastName":"SonicCD"},{"appxFileName":"OpenLara.appx","lastName":"OpenLara"},{"appxFileName":"Flycast.appx", "lastName":"Dreamcast"}, {"appxFileName":"Devilution.appx", "lastName":"DevilutionX"}]'
+    buildParameters: '[{"appxFileName":"SonicCD.appx","Description":"This is an improved version of Sonic CD.  Assets are not included.","lastName":"SonicCD","Screenshot":"Sonic Screenshot.png"},{"appxFileName":"OpenLara.appx","lastName":"OpenLara","Description":"This is an improved version of Tomb Raider.  Assets are not included.","Screenshot":"OpenLara Screenshot.png"},{"appxFileName":"Flycast.appx","lastName":"Dreamcast","Description":"This app emulates the Dreamcast.","Screenshot":"Flycast Screenshot.png"}]'
+    #{"appxFileName":"Devilution.appx","lastName":"DevilutionX","Description":"This is a port of Diablo.  Assets are not included.","Screenshot:"DevilutionX Screenshot.png"}]'
     waitForQueuedBuildsToFinish: false
     storeInOutputVariable: false
     customPrefix: "12"
